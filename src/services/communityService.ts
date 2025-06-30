@@ -67,6 +67,48 @@ export interface CommunityReward {
 }
 
 class CommunityService {
+  // Ensure user profile exists before creating community
+  private async ensureUserProfile(userId: string, userEmail?: string, userName?: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      // Check if profile already exists
+      const { data: existingProfile, error: checkError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', userId)
+        .limit(1);
+
+      if (checkError) {
+        console.error('Error checking profile:', checkError);
+        return { success: false, error: 'Failed to check user profile' };
+      }
+
+      // If profile exists, we're good
+      if (existingProfile && existingProfile.length > 0) {
+        return { success: true };
+      }
+
+      // Create profile if it doesn't exist
+      const { error: insertError } = await supabase
+        .from('profiles')
+        .insert({
+          id: userId,
+          email: userEmail || 'user@example.com',
+          name: userName || 'User',
+          avatar_url: null
+        });
+
+      if (insertError) {
+        console.error('Error creating profile:', insertError);
+        return { success: false, error: 'Failed to create user profile' };
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Unexpected error ensuring user profile:', error);
+      return { success: false, error: 'An unexpected error occurred while setting up user profile' };
+    }
+  }
+
   // Create a new community with comprehensive validation
   async createCommunity(data: CreateCommunityData, creatorId: string): Promise<{ success: boolean; community?: Community; error?: string }> {
     try {
@@ -74,6 +116,12 @@ class CommunityService {
       const validationError = this.validateCommunityData(data);
       if (validationError) {
         return { success: false, error: validationError };
+      }
+
+      // Ensure user profile exists first
+      const profileResult = await this.ensureUserProfile(creatorId);
+      if (!profileResult.success) {
+        return { success: false, error: profileResult.error };
       }
 
       // Convert stake amount to cents
@@ -322,11 +370,10 @@ class CommunityService {
         .select('*')
         .eq('community_id', communityId)
         .order('date', { ascending: false })
-        .limit(1)
-        .single();
+        .limit(1);
 
-      if (error) return null;
-      return data;
+      if (error || !data || data.length === 0) return null;
+      return data[0];
     } catch (error) {
       return null;
     }
@@ -406,10 +453,10 @@ class CommunityService {
         .from('communities')
         .select('*')
         .eq('id', id)
-        .single();
+        .limit(1);
 
-      if (communityError) {
-        return { success: false, error: communityError.message };
+      if (communityError || !community || community.length === 0) {
+        return { success: false, error: 'Community not found' };
       }
 
       // Get members with progress
@@ -442,7 +489,7 @@ class CommunityService {
       return { 
         success: true, 
         community: {
-          ...community,
+          ...community[0],
           member_count: members?.length || 0
         }, 
         members: members || [], 
@@ -473,13 +520,13 @@ class CommunityService {
         .from('communities')
         .select('start_date, end_date, total_minimum_hours')
         .eq('id', communityId)
-        .single();
+        .limit(1);
 
-      if (!community) return 0;
+      if (!community || community.length === 0) return 0;
 
-      const startDate = new Date(community.start_date);
+      const startDate = new Date(community[0].start_date);
       const today = new Date();
-      const endDate = new Date(community.end_date);
+      const endDate = new Date(community[0].end_date);
       
       // If community hasn't started yet, progress is 0
       if (today < startDate) return 0;
@@ -505,7 +552,7 @@ class CommunityService {
       const totalHoursLogged = attendanceData?.reduce((sum, a) => sum + (a.duration_seconds / 3600), 0) || 0;
       
       // Calculate progress based on hours logged vs required hours
-      const requiredHours = community.total_minimum_hours;
+      const requiredHours = community[0].total_minimum_hours;
       const hoursProgressPercentage = Math.min(100, (totalHoursLogged / requiredHours) * 100);
       
       // Weight the progress: 70% based on hours logged, 30% based on time elapsed
@@ -531,15 +578,26 @@ class CommunityService {
   // Join a community with comprehensive validation
   async joinCommunity(communityId: string, userId: string): Promise<{ success: boolean; error?: string }> {
     try {
-      // Check if user is already a member
-      const { data: existingMember } = await supabase
+      // Ensure user profile exists first
+      const profileResult = await this.ensureUserProfile(userId);
+      if (!profileResult.success) {
+        return { success: false, error: profileResult.error };
+      }
+
+      // Check if user is already a member - FIXED: Use limit(1) instead of single()
+      const { data: existingMember, error: memberCheckError } = await supabase
         .from('community_members')
         .select('id')
         .eq('community_id', communityId)
         .eq('user_id', userId)
-        .single();
+        .limit(1);
 
-      if (existingMember) {
+      if (memberCheckError) {
+        console.error('Error checking existing membership:', memberCheckError);
+        return { success: false, error: 'Failed to check membership status' };
+      }
+
+      if (existingMember && existingMember.length > 0) {
         return { success: false, error: 'You are already a member of this community' };
       }
 
@@ -548,20 +606,20 @@ class CommunityService {
         .from('communities')
         .select('max_members, stake_amount, status, start_date')
         .eq('id', communityId)
-        .single();
+        .limit(1);
 
-      if (communityError || !community) {
+      if (communityError || !community || community.length === 0) {
         return { success: false, error: 'Community not found' };
       }
 
       // Check if community is full
       const memberCount = await this.getCommunityMemberCount(communityId);
-      if (memberCount >= community.max_members) {
+      if (memberCount >= community[0].max_members) {
         return { success: false, error: 'This community is full' };
       }
 
       // Allow joining active communities
-      if (community.status !== 'waiting' && community.status !== 'active') {
+      if (community[0].status !== 'waiting' && community[0].status !== 'active') {
         return { success: false, error: 'This community is no longer accepting new members' };
       }
 
@@ -584,7 +642,7 @@ class CommunityService {
       await this.recordStakePayment(
         userId, 
         communityId, 
-        community.stake_amount, 
+        community[0].stake_amount, 
         'Stake payment for joining community'
       );
 
@@ -619,6 +677,9 @@ class CommunityService {
   // Get user's communities
   async getUserCommunities(userId: string): Promise<{ success: boolean; communities?: Community[]; error?: string }> {
     try {
+      // Ensure user profile exists first
+      await this.ensureUserProfile(userId);
+
       // Update community statuses first
       await this.updateCommunityStatuses();
       
@@ -653,6 +714,9 @@ class CommunityService {
   // Get user's earnings with detailed breakdown
   async getUserEarnings(userId: string): Promise<{ success: boolean; earnings?: Earning[]; totalEarnings?: number; totalLosses?: number; error?: string }> {
     try {
+      // Ensure user profile exists first
+      await this.ensureUserProfile(userId);
+
       const { data: earnings, error } = await supabase
         .from('earnings')
         .select('*')
@@ -697,15 +761,19 @@ class CommunityService {
         return { success: false, error: 'Goals completed cannot be negative' };
       }
       
-      // Check if user is a member of the community
-      const { data: membership } = await supabase
+      // Check if user is a member of the community - FIXED: Use limit(1) instead of single()
+      const { data: membership, error: membershipError } = await supabase
         .from('community_members')
         .select('id')
         .eq('community_id', data.communityId)
         .eq('user_id', data.userId)
-        .single();
+        .limit(1);
         
-      if (!membership) {
+      if (membershipError) {
+        return { success: false, error: 'Failed to check membership status' };
+      }
+
+      if (!membership || membership.length === 0) {
         return { success: false, error: 'You are not a member of this community' };
       }
       
@@ -714,34 +782,34 @@ class CommunityService {
         .from('communities')
         .select('status')
         .eq('id', data.communityId)
-        .single();
+        .limit(1);
         
-      if (!community || community.status !== 'active') {
+      if (!community || community.length === 0 || community[0].status !== 'active') {
         return { success: false, error: 'Progress can only be logged for active communities' };
       }
       
-      // Check if user has already logged progress today
+      // Check if user has already logged progress today - FIXED: Use limit(1) instead of single()
       const { data: existingProgress } = await supabase
         .from('member_progress')
         .select('id, hours_logged, goals_completed')
         .eq('community_id', data.communityId)
         .eq('user_id', data.userId)
         .eq('date', today)
-        .single();
+        .limit(1);
         
       // Get community requirements
       const { data: communityDetails } = await supabase
         .from('communities')
         .select('total_minimum_hours')
         .eq('id', data.communityId)
-        .single();
+        .limit(1);
         
-      if (!communityDetails) {
+      if (!communityDetails || communityDetails.length === 0) {
         return { success: false, error: 'Community details not found' };
       }
       
       // Calculate daily goal threshold (total_minimum_hours / 30 days)
-      const dailyGoalThreshold = communityDetails.total_minimum_hours / 30;
+      const dailyGoalThreshold = communityDetails[0].total_minimum_hours / 30;
       const dailyGoalMet = data.hoursLogged >= dailyGoalThreshold;
       
       // Insert or update progress
@@ -751,11 +819,11 @@ class CommunityService {
           community_id: data.communityId,
           user_id: data.userId,
           date: today,
-          hours_logged: existingProgress 
-            ? existingProgress.hours_logged + data.hoursLogged 
+          hours_logged: existingProgress && existingProgress.length > 0
+            ? existingProgress[0].hours_logged + data.hoursLogged 
             : data.hoursLogged,
-          goals_completed: existingProgress 
-            ? existingProgress.goals_completed + data.goalsCompleted 
+          goals_completed: existingProgress && existingProgress.length > 0
+            ? existingProgress[0].goals_completed + data.goalsCompleted 
             : data.goalsCompleted,
           daily_goal_met: dailyGoalMet,
           notes: data.notes
@@ -928,22 +996,21 @@ class CommunityService {
         .select('*')
         .eq('community_id', communityId)
         .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
+        .limit(1);
 
       if (error && error.code !== 'PGRST116') {
         return { success: false, error: error.message };
       }
 
-      if (!distribution) {
+      if (!distribution || distribution.length === 0) {
         // If no distribution exists yet, calculate a preview
         const { data: community } = await supabase
           .from('communities')
           .select('stake_amount, status')
           .eq('id', communityId)
-          .single();
+          .limit(1);
           
-        if (!community) {
+        if (!community || community.length === 0) {
           return { success: false, error: 'Community not found' };
         }
         
@@ -951,7 +1018,7 @@ class CommunityService {
         const memberCount = await this.getCommunityMemberCount(communityId);
         
         // Calculate estimated distribution
-        const totalStakePool = community.stake_amount * memberCount;
+        const totalStakePool = community[0].stake_amount * memberCount;
         const platformFee = Math.round(totalStakePool * 0.1);
         const distributableAmount = totalStakePool - platformFee;
         
@@ -978,11 +1045,11 @@ class CommunityService {
 
       // Convert amounts from cents to dollars
       const formattedDistribution = {
-        ...distribution,
-        total_stake_pool: distribution.total_stake_pool / 100,
-        platform_fee_amount: distribution.platform_fee_amount / 100,
-        distributable_amount: distribution.distributable_amount / 100,
-        reward_per_winner: distribution.reward_per_winner / 100
+        ...distribution[0],
+        total_stake_pool: distribution[0].total_stake_pool / 100,
+        platform_fee_amount: distribution[0].platform_fee_amount / 100,
+        distributable_amount: distribution[0].distributable_amount / 100,
+        reward_per_winner: distribution[0].reward_per_winner / 100
       };
 
       return { success: true, distribution: formattedDistribution };
@@ -1000,13 +1067,13 @@ class CommunityService {
         .from('communities')
         .select('status')
         .eq('id', communityId)
-        .single();
+        .limit(1);
         
-      if (!community) {
+      if (!community || community.length === 0) {
         return { success: false, error: 'Community not found' };
       }
       
-      if (community.status !== 'ended') {
+      if (community[0].status !== 'ended') {
         return { success: false, error: 'Can only distribute earnings for ended communities' };
       }
       
@@ -1016,10 +1083,9 @@ class CommunityService {
         .select('status')
         .eq('community_id', communityId)
         .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
+        .limit(1);
         
-      if (existingDistribution && existingDistribution.status === 'distributed') {
+      if (existingDistribution && existingDistribution.length > 0 && existingDistribution[0].status === 'distributed') {
         return { success: false, error: 'Earnings have already been distributed for this community' };
       }
       

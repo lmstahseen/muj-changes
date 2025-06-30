@@ -30,6 +30,7 @@ export function PreMeetingModal({ isOpen, onClose, onJoin }: PreMeetingModalProp
 
   const testDevices = async () => {
     setDeviceStatus(prev => ({ ...prev, camera: 'testing', microphone: 'testing' }));
+    setErrorMessage(''); // Clear previous errors
     
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -46,12 +47,27 @@ export function PreMeetingModal({ isOpen, onClose, onJoin }: PreMeetingModalProp
     } catch (error) {
       console.error('Device test error:', error);
       setDeviceStatus(prev => ({ ...prev, camera: 'error', microphone: 'error' }));
-      setErrorMessage('Failed to access camera/microphone. Please check permissions.');
+      
+      // Provide more helpful error messages based on the error type
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          setErrorMessage('Camera and microphone access was denied. Please allow access in your browser settings and try again.');
+        } else if (error.name === 'NotFoundError') {
+          setErrorMessage('No camera or microphone found. Please connect a camera and microphone and try again.');
+        } else if (error.name === 'NotReadableError') {
+          setErrorMessage('Camera or microphone is already in use by another application. Please close other applications and try again.');
+        } else {
+          setErrorMessage(`Failed to access camera/microphone: ${error.message}`);
+        }
+      } else {
+        setErrorMessage('Failed to access camera/microphone. Please check your device permissions.');
+      }
     }
   };
 
   const testScreenShare = async () => {
     setDeviceStatus(prev => ({ ...prev, screen: 'testing' }));
+    setErrorMessage(''); // Clear previous errors
     
     try {
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
@@ -66,7 +82,17 @@ export function PreMeetingModal({ isOpen, onClose, onJoin }: PreMeetingModalProp
     } catch (error) {
       console.error('Screen share test error:', error);
       setDeviceStatus(prev => ({ ...prev, screen: 'error' }));
-      setErrorMessage('Failed to access screen sharing. Please check permissions.');
+      
+      // Provide more helpful error messages
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          setErrorMessage('Screen sharing access was denied. Please allow screen sharing when prompted.');
+        } else {
+          setErrorMessage(`Failed to access screen sharing: ${error.message}`);
+        }
+      } else {
+        setErrorMessage('Failed to access screen sharing. Please check permissions.');
+      }
     }
   };
 
@@ -79,12 +105,12 @@ export function PreMeetingModal({ isOpen, onClose, onJoin }: PreMeetingModalProp
 
   const handleJoin = () => {
     if (selectedMethod === 'camera' && deviceStatus.camera !== 'success') {
-      setErrorMessage('Camera access is required for video meetings');
+      setErrorMessage('Camera access is required for video meetings. Please allow camera access and try again.');
       return;
     }
     
     if (selectedMethod === 'screen' && deviceStatus.screen !== 'success') {
-      setErrorMessage('Screen sharing access is required');
+      setErrorMessage('Screen sharing access is required. Please test and allow screen sharing access.');
       return;
     }
     
@@ -99,6 +125,16 @@ export function PreMeetingModal({ isOpen, onClose, onJoin }: PreMeetingModalProp
       case 'error': return <Icon icon="solar:danger-triangle-bold-duotone" width={16} className="text-red-600" />;
       default: return <div className="w-4 h-4 bg-gray-300 rounded-full" />;
     }
+  };
+
+  const retryDeviceTest = () => {
+    setErrorMessage('');
+    setDeviceStatus({
+      camera: 'untested',
+      microphone: 'untested', 
+      screen: 'untested'
+    });
+    testDevices();
   };
 
   if (!isOpen) return null;
@@ -166,6 +202,18 @@ export function PreMeetingModal({ isOpen, onClose, onJoin }: PreMeetingModalProp
                 )}
               </div>
             </div>
+
+            {/* Retry Button */}
+            {(deviceStatus.camera === 'error' || deviceStatus.microphone === 'error') && (
+              <div className="mt-4 text-center">
+                <button
+                  onClick={retryDeviceTest}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  Retry Device Test
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Sharing Method Selection */}
@@ -211,9 +259,20 @@ export function PreMeetingModal({ isOpen, onClose, onJoin }: PreMeetingModalProp
 
           {/* Error Message */}
           {errorMessage && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center space-x-3">
-              <Icon icon="solar:danger-triangle-bold-duotone" width={20} className="text-red-600 flex-shrink-0" />
-              <p className="text-red-700 text-sm">{errorMessage}</p>
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start space-x-3">
+              <Icon icon="solar:danger-triangle-bold-duotone" width={20} className="text-red-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-red-700 text-sm">{errorMessage}</p>
+                <div className="mt-2 text-xs text-red-600">
+                  <p><strong>Troubleshooting tips:</strong></p>
+                  <ul className="list-disc list-inside mt-1 space-y-1">
+                    <li>Check that your camera and microphone are connected</li>
+                    <li>Allow camera/microphone access when prompted by your browser</li>
+                    <li>Close other applications that might be using your camera</li>
+                    <li>Try refreshing the page and allowing permissions again</li>
+                  </ul>
+                </div>
+              </div>
             </div>
           )}
 
