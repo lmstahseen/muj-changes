@@ -4,11 +4,33 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Create Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Validate environment variables
+if (!supabaseUrl) {
+  console.error('Missing VITE_SUPABASE_URL environment variable');
+}
+
+if (!supabaseAnonKey) {
+  console.error('Missing VITE_SUPABASE_ANON_KEY environment variable');
+}
 
 // Export a flag to check if we're in demo mode
 export const isDemoMode = !supabaseUrl || !supabaseAnonKey;
+
+// Create Supabase client with proper error handling
+export const supabase = isDemoMode 
+  ? null 
+  : createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true
+      },
+      global: {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+    });
 
 // Enhanced types for our database tables
 export interface Community {
@@ -143,6 +165,14 @@ export const getTimeUntilEnd = (endDate: string): string => {
 export const calculateProgress = (current: number, total: number): number => {
   if (total === 0) return 0;
   return Math.min(100, Math.round((current / total) * 100));
+};
+
+// Helper function to safely use Supabase client
+export const getSupabaseClient = () => {
+  if (isDemoMode) {
+    throw new Error('Supabase client is not available in demo mode. Please check your environment variables.');
+  }
+  return supabase;
 };
 
 // Import React for lazy loading
