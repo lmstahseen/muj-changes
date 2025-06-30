@@ -43,6 +43,12 @@ const USERS: Record<string, { password: string; userData: UserData }> = {
   }
 };
 
+// UUID validation function
+const isValidUUID = (uuid: string): boolean => {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
+};
+
 // Auth provider component
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserData | null>(null);
@@ -61,8 +67,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (savedUser) {
         console.log('AuthProvider: Found saved user');
         const userData = JSON.parse(savedUser);
-        setUser(userData);
-        setIsAuthenticated(true);
+        
+        // Validate that the user ID is a proper UUID
+        if (userData.id && isValidUUID(userData.id)) {
+          console.log('AuthProvider: Valid UUID found, restoring session');
+          setUser(userData);
+          setIsAuthenticated(true);
+        } else {
+          console.log('AuthProvider: Invalid UUID found, clearing corrupted data');
+          // Clear invalid data from localStorage
+          localStorage.removeItem('simulated_user');
+        }
       }
     } catch (error) {
       console.error('AuthProvider: Error initializing auth', error);
