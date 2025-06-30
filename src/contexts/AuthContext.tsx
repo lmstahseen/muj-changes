@@ -21,12 +21,12 @@ interface AuthContextType {
 // Create context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Simulated user database
+// Simulated user database with valid UUIDs
 const USERS: Record<string, { password: string; userData: UserData }> = {
   'demo@example.com': {
     password: 'password123',
     userData: {
-      id: 'simulated-user-id-1',
+      id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
       email: 'demo@example.com',
       name: 'Demo User',
       avatar: '👤'
@@ -35,7 +35,7 @@ const USERS: Record<string, { password: string; userData: UserData }> = {
   'test@example.com': {
     password: 'test123',
     userData: {
-      id: 'simulated-user-id-2',
+      id: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22',
       email: 'test@example.com',
       name: 'Test User',
       avatar: '👤'
@@ -124,9 +124,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return { success: false, error: 'Email already in use' };
       }
       
+      // Generate a valid UUID for new user
+      const generateUUID = () => {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+          const r = Math.random() * 16 | 0;
+          const v = c == 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        });
+      };
+      
       // Create new user (in a real app, this would be saved to a database)
       const newUser: UserData = {
-        id: `simulated-user-id-${Date.now()}`,
+        id: generateUUID(),
         email,
         name,
         avatar: '👤'
