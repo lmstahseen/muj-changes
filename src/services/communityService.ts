@@ -1,4 +1,4 @@
-import { supabase, Community, CommunityMember, CreateCommunityData, Earning } from '../lib/supabase';
+import { supabase, Community, CommunityMember, CreateCommunityData, Earning, isDemoMode } from '../lib/supabase';
 
 // Extended interfaces for new functionality
 export interface MeetingSession {
@@ -70,6 +70,11 @@ class CommunityService {
   // Ensure user profile exists before creating community
   private async ensureUserProfile(userId: string, userEmail?: string, userName?: string): Promise<{ success: boolean; error?: string }> {
     try {
+      // If running in demo mode, bypass Supabase profile operations
+      if (isDemoMode) {
+        return { success: true };
+      }
+
       // Check if profile already exists
       const { data: existingProfile, error: checkError } = await supabase
         .from('profiles')
