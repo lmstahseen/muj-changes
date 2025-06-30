@@ -13,7 +13,7 @@ export function MobileNavbar() {
 
   const navItems = [
     { path: '/home', icon: 'solar:home-2-bold-duotone', label: 'Home' },
-    { path: '/communities', icon: 'solar:users-group-rounded-bold-duotone', label: 'Communities' },
+    { path: '/communities', icon: 'solar:users-group-rounded-bold-duotone', label: 'Explore' },
     { path: '/create', icon: 'solar:add-circle-bold-duotone', label: 'Create' },
     { path: '/wallet', icon: 'solar:wallet-money-bold-duotone', label: 'Wallet' },
     { path: '/profile', icon: 'solar:user-rounded-bold-duotone', label: 'Profile' },
